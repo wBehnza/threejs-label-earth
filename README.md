@@ -1,4 +1,4 @@
-# 3D Globe with labels
+# 3D Earth with labels
 
 A lightweight **Three.js**-powered globe with label and country support.
 
