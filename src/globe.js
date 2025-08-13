@@ -1,4 +1,5 @@
 import * as three from 'three';
+import { vector3ToLatLon } from './helpers.js';
 import globeTexture from '../data/earth-texture.png';
 
 export class Globe {
@@ -49,6 +50,25 @@ export class Globe {
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
         this.requestRender();
+    }
+
+    latLonFromScreenPos(x, y, boundaries) {
+        const ndc = new three.Vector2(
+            ((x - boundaries.left) / boundaries.width) * 2 - 1,
+            -((y - boundaries.top) / boundaries.height) * 2 + 1
+        );
+
+        const raycaster = new three.Raycaster();
+        raycaster.setFromCamera(ndc, this.camera);
+        const hit = raycaster.intersectObject(this.earthMesh, false)[0];
+
+        if (!hit) {
+            console.info('Clicked outside globe');
+            return;
+        }
+
+        const { lat, lon } = vector3ToLatLon(hit.point, 1);
+        return { lat, lon };
     }
 
     rotate(dx, dy, dragSpeed) {

@@ -27,79 +27,119 @@ export class Countries {
     }
 
     createCountryLookupGrid() {
-        const grid = Array(360).fill(null).map(() => Array(180).fill(null));
+        const gridWidth = 360;
+        const gridHeight = 180;
+        const countryGridData = new Int16Array(gridWidth * gridHeight);
+        countryGridData.fill(-1);
 
-        for (const feature of this.geoJson.features) {
-            const geom = feature.geometry;
+        // country name <-> id
+        const countryIdByName = new Map();
+        const countryNameById = [];
+        let nextCountryId = 0;
 
-            if (!["Polygon", "MultiPolygon"].includes(geom.type)) {
-                console.error(`Unsupported geometry for ${feature.properties.admin}`);
-                continue;
-            }
+        // Precompute per-feature structure with edge buckets per Y row
+        const countryFeatures = this.geoJson.features
+            .filter(feature => feature.geometry && (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon"))
+            .map(feature => {
+                let countryId = countryIdByName.get(feature.properties.admin);
+                if (countryId == null) {
+                    countryId = nextCountryId++;
+                    countryIdByName.set(feature.properties.admin, countryId);
+                    countryNameById[countryId] = feature.properties.admin;
+                }
 
-            let [minX, minY, maxX, maxY] = [180, 90, -180, -90];
+                const polygons = (feature.geometry.type === "Polygon")
+                    ? [feature.geometry.coordinates]
+                    : feature.geometry.coordinates;
 
-            for (const poly of geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates) {
-                for (const ring of poly) {
-                    for (const [x, y] of ring) {
-                        minX = Math.min(minX, x);
-                        minY = Math.min(minY, y);
-                        maxX = Math.max(maxX, x);
-                        maxY = Math.max(maxY, y);
+                // buckets[row] = array of edges [x1, y1, x2, y2] that cross this row’s latitude
+                const edgeBucketsByRow = Array.from({ length: gridHeight }, () => []);
+                let minLongitude = 180, minLatitude = 90, maxLongitude = -180, maxLatitude = -90;
+
+                for (const polygon of polygons) {
+                    for (const ring of polygon) {
+                        // Update bounding box
+                        for (const [lon, lat] of ring) {
+                            if (lon < minLongitude) minLongitude = lon;
+                            if (lon > maxLongitude) maxLongitude = lon;
+                            if (lat < minLatitude) minLatitude = lat;
+                            if (lat > maxLatitude) maxLatitude = lat;
+                        }
+                        // Bucket edges
+                        for (let i = 0, prevIndex = ring.length - 1; i < ring.length; prevIndex = i++) {
+                            const [x1, y1] = ring[prevIndex];
+                            const [x2, y2] = ring[i];
+                            if (y1 === y2) continue; // Skip horizontal edges
+
+                            const minY = Math.min(y1, y2);
+                            const maxY = Math.max(y1, y2);
+
+                            const rowMin = Math.max(0, Math.floor(90 - maxY));
+                            const rowMax = Math.min(gridHeight - 1, Math.floor(90 - minY));
+
+                            for (let rowIndex = rowMin; rowIndex <= rowMax; rowIndex++) {
+                                const latCenter = 90 - (rowIndex + 0.5);
+                                if ((latCenter > y1) !== (latCenter > y2)) {
+                                    edgeBucketsByRow[rowIndex].push(x1, y1, x2, y2);
+                                }
+                            }
+                        }
                     }
                 }
-            }
 
-            const gridMinX = Math.max(0, Math.floor(minX + 180));
-            const gridMaxX = Math.min(359, Math.floor(maxX + 180));
-            const gridMinY = Math.max(0, Math.floor(90 - maxY));
-            const gridMaxY = Math.min(179, Math.floor(90 - minY));
+                // Clamp bbox to grid indices
+                const gridX0 = Math.max(0, Math.floor(minLongitude + 180));
+                const gridX1 = Math.min(gridWidth - 1, Math.floor(maxLongitude + 180));
+                const gridY0 = Math.max(0, Math.floor(90 - maxLatitude));
+                const gridY1 = Math.min(gridHeight - 1, Math.floor(90 - minLatitude));
 
-            for (let x = gridMinX; x <= gridMaxX; x++) {
-                for (let y = gridMinY; y <= gridMaxY; y++) {
-                    const lonCenter = (x + 0.5) - 180;
-                    const latCenter = 90 - (y + 0.5);
-                    if (grid[x][y] === null &&
-                        this._isPointInFeature(lonCenter, latCenter, feature)) {
-                        grid[x][y] = feature.properties.admin;
+                return { countryId, edgeBucketsByRow, gridX0, gridX1, gridY0, gridY1 };
+            });
+
+        // Fill grid
+        for (const feature of countryFeatures) {
+            for (let gridY = feature.gridY0; gridY <= feature.gridY1; gridY++) {
+                const latCenter = 90 - (gridY + 0.5);
+                const edgesForRow = feature.edgeBucketsByRow[gridY];
+                if (!edgesForRow.length) continue;
+
+                for (let gridX = feature.gridX0; gridX <= feature.gridX1; gridX++) {
+                    const cellIndex = gridX * gridHeight + gridY;
+                    if (countryGridData[cellIndex] !== -1) continue; // Already filled
+
+                    const lonCenter = (gridX + 0.5) - 180;
+                    let isInside = false;
+
+                    for (let edgeIndex = 0; edgeIndex < edgesForRow.length; edgeIndex += 4) {
+                        const x1 = edgesForRow[edgeIndex];
+                        const y1 = edgesForRow[edgeIndex + 1];
+                        const x2 = edgesForRow[edgeIndex + 2];
+                        const y2 = edgesForRow[edgeIndex + 3];
+
+                        const t = (latCenter - y1) / (y2 - y1);
+                        const xCross = x1 + t * (x2 - x1);
+                        if (lonCenter < xCross) isInside = !isInside;
                     }
+                    if (isInside) countryGridData[cellIndex] = feature.countryId;
                 }
             }
         }
 
-        this.countryGrid = grid;
-    }
-
-    getCountryAtMousePos(e, bounding, earthMesh) {
-        const ndc = new three.Vector2(
-            ((e.x - bounding.left) / bounding.width) * 2 - 1,
-            -((e.y - bounding.top) / bounding.height) * 2 + 1
-        );
-
-        const raycaster = new three.Raycaster();
-        raycaster.setFromCamera(ndc, this.camera);
-        const hit = raycaster.intersectObject(earthMesh, false)[0];
-
-        if (!hit) {
-            console.info('Clicked outside globe');
-            return;
-        }
-
-        const { lat, lon } = vector3ToLatLon(hit.point, 1);
-        return this.getCountryAt(lat, lon);
+        this.countryGrid = {
+            data: countryGridData,
+            names: countryNameById,
+            width: gridWidth,
+            height: gridHeight
+        };
     }
 
     getCountryAt(lat, lon) {
-        if (!this.countryGrid) {
-            console.error('Country grid not ready');
-            return null;
-        }
-        if (!lat || !lon) {
-            console.error('Lat Lon error');
-        }
-        const x = Math.max(0, Math.min(359, Math.round(lon + 180)));
-        const y = Math.max(0, Math.min(179, Math.round(90 - lat)));
-        return this.countryGrid[x][y];
+        const countryGrid = this.countryGrid;
+        if (!countryGrid) return null;
+        const gridX = Math.max(0, Math.min(countryGrid.width - 1, Math.floor(lon + 180)));
+        const gridY = Math.max(0, Math.min(countryGrid.height - 1, Math.floor(90 - lat)));
+        const countryId = countryGrid.data[gridX * countryGrid.height + gridY];
+        return countryId === -1 ? null : countryGrid.names[countryId];
     }
 
     drawCountryAt(lat, lon) {

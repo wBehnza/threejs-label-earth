@@ -21,7 +21,7 @@ class App {
     setupScene() {
         this.scene = new three.Scene();
         this.cameraSphere = new three.Spherical(3, Math.PI / 2, 0);
-        this.camera = new three.PerspectiveCamera(55, (this.container.clientWidth / this.container.clientHeight));
+        this.camera = new three.PerspectiveCamera(50, (this.container.clientWidth / this.container.clientHeight));
         this.boundaries = this.container.getBoundingClientRect();
         this.renderRequested = false;
         this.requestRender = () => { this.renderRequested = true; };
@@ -63,15 +63,16 @@ class App {
     }
 
     handleClick(x, y) {
-        this.boundaries = this.container.getBoundingClientRect();
-        const label = this.labels.getLabelAtMousePos({ x, y }, this.boundaries, this.globe.earthMesh);
+        const label = this.labels.getLabelAtScreenPos(x, y, this.boundaries);
         if (label) {
             const labelText = `Lat: ${label.lat}, Lon: ${label.lon}`;
             this.tooltip.showTooltip({ x, y }, labelText);
             return;
         }
 
-        const country = this.countries.getCountryAtMousePos({ x, y }, this.boundaries, this.globe.earthMesh);
+        const { lat, lon } = this.globe.latLonFromScreenPos(x, y, this.boundaries);
+        const country = this.countries.getCountryAt(lat, lon);
+
         if (country) {
             this.countries.drawCountry(country);
             this.requestRender();
@@ -86,7 +87,7 @@ class App {
         const zoomSpeed = this.cameraSphere.radius * 0.001;
         const newR = this.cameraSphere.radius + deltaY * zoomSpeed;
 
-        this.cameraSphere.radius = Math.max(1.5, Math.min(10, newR));
+        this.cameraSphere.radius = Math.max(1.2, Math.min(10, newR));
         this.camera.position.setFromSpherical(this.cameraSphere);
         this.requestRender();
     }
@@ -94,8 +95,7 @@ class App {
     handleResize() {
         this.globe.resizeCanvas(this.container);
         this.labels.setupLabelCanvas(this.container);
-        this.boundaries = this.
-            container.getBoundingClientRect();
+        this.boundaries = this.container.getBoundingClientRect();
     }
 
     start() {
@@ -113,6 +113,4 @@ class App {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    new App();
-});
+new App();
