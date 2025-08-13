@@ -75,7 +75,7 @@ export class Labels {
 
             const worldPosition = this.tempWorldPosition.copy(latLonToVector3(label.lat, label.lon));
 
-            if (this.camera.position.dot(worldPosition) < 1) continue; // behind camera}
+            if (this.camera.position.dot(worldPosition) < 1) continue; // behind camera
             if (!this.viewFrustum.containsPoint(worldPosition)) continue;
             if (this.drawnLabels.length >= this.maxDrawnLabels) break; // limit reached
 
