@@ -32,12 +32,11 @@ export class Countries {
         const countryGridData = new Int16Array(gridWidth * gridHeight);
         countryGridData.fill(-1);
 
-        // country name <-> id
         const countryIdByName = new Map();
         const countryNameById = [];
         let nextCountryId = 0;
 
-        // Precompute per-feature structure with edge buckets per Y row
+        // precompute per-feature structure 
         const countryFeatures = this.geoJson.features
             .filter(feature => feature.geometry && (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon"))
             .map(feature => {
@@ -58,18 +57,18 @@ export class Countries {
 
                 for (const polygon of polygons) {
                     for (const ring of polygon) {
-                        // Update bounding box
+                        // update bounding box
                         for (const [lon, lat] of ring) {
                             if (lon < minLongitude) minLongitude = lon;
                             if (lon > maxLongitude) maxLongitude = lon;
                             if (lat < minLatitude) minLatitude = lat;
                             if (lat > maxLatitude) maxLatitude = lat;
                         }
-                        // Bucket edges
+                        // bucket edges
                         for (let i = 0, prevIndex = ring.length - 1; i < ring.length; prevIndex = i++) {
                             const [x1, y1] = ring[prevIndex];
                             const [x2, y2] = ring[i];
-                            if (y1 === y2) continue; // Skip horizontal edges
+                            if (y1 === y2) continue; // skip horizontal edges
 
                             const minY = Math.min(y1, y2);
                             const maxY = Math.max(y1, y2);
