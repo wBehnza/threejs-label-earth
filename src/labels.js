@@ -68,7 +68,6 @@ export class Labels {
         this.viewFrustum.setFromProjectionMatrix(this.modelViewProjectionMatrix);
         this.camera.getWorldDirection(this.cameraDirection); // forward vector
 
-        let labelsOutSideView = 0;
         for (let i = 0; i < labels.length; i++) {
             const label = labels[i];
             const text = label.name;
@@ -76,14 +75,8 @@ export class Labels {
 
             const worldPosition = this.tempWorldPosition.copy(latLonToVector3(label.lat, label.lon));
 
-            if (this.camera.position.dot(worldPosition) < 1) {
-                labelsOutSideView++;
-                continue; // behind camera
-            }
-            if (!this.viewFrustum.containsPoint(worldPosition)) {
-                labelsOutSideView++
-                continue; // outside view frustum
-            };
+            if (this.camera.position.dot(worldPosition) < 1) continue; // behind camera}
+            if (!this.viewFrustum.containsPoint(worldPosition)) continue;
             if (this.drawnLabels.length >= this.maxDrawnLabels) break; // limit reached
 
             const ndcMargin = 0.02;

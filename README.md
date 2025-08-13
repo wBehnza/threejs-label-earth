@@ -12,7 +12,7 @@ A lightweight **Three.js**-powered globe with label and country support.
 ## Installation & Running
 
 ```bash
-# Install dependencies
+# Install dependencies (three.js)
 npm install
 
 # Start development server
