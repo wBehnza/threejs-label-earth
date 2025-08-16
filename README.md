@@ -2,6 +2,8 @@
 
 A lightweight **Three.js**-powered globe with label and country support.
 
+[Demo](https://nilsslui.github.io/threejs-label-earth/)
+
 ## Features
 - Label use latitude longitude for location (see data/labels.json)
 - Smooth globe rotation and zoom
